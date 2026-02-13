@@ -1,97 +1,100 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import pool from "../db.js";
-import type { Request, Response } from 'express'
-import { QueryResult } from "pg";
+import type { QueryResult } from "pg";
 
-const router = Router()
+const router = Router();
 
-//Create a new todo
-interface TodoInput { description: string; completed: boolean; }
-interface Todo { todo_id: number; description: string; completed: boolean; }
+// Types
+interface TodoInput {
+    description: string;
+    completed?: boolean;
+}
 
-router.post('/', async (req: Request, res: Response) => {
+interface Todo {
+    todo_id: number;
+    description: string;
+    completed: boolean;
+}
+
+// Create a new todo
+router.post("/", async (req: Request, res: Response) => {
     try {
-        const { description, completed } = req.body as TodoInput
+        const body = req.body as unknown as TodoInput;
+        const { description, completed = false } = body;
+
         if (!description) {
-            return res.status(400).json({ error: "Description is required" })
+            return res.status(400).json({ error: "Description is required" });
         }
 
-        const newTodo: QueryResult<Todo> = await pool.query(
+        const result: QueryResult<Todo> = await pool.query(
             "INSERT INTO todo (description, completed) VALUES ($1, $2) RETURNING *",
-            [description, completed || false]
-        )
-        res.json(newTodo.rows[0])
-    } catch (err) {
-        if (err instanceof Error) {
-            console.error(err.message);
-        } else {
-            console.error(String(err));
-        }
-        res.status(500).send("Server Error");
-    }
-})
+            [description, completed]
+        );
 
-//get all todos
-router.get("/", async (req: Request, res: Response) => {
-    try {
-        const allTodos: QueryResult<Todo> = await pool.query("SELECT * FROM todo");
-        res.json(allTodos.rows);
-        
+        res.json(result.rows[0]);
     } catch (err) {
-        if (err instanceof Error) { console.error(err.message); }
-        else { console.error(String(err)); } res.status(500).send("Server Error");
+        console.error(err instanceof Error ? err.message : String(err));
+        res.status(500).send("Server Error");
     }
 });
 
-//update todo
-router.put('/:id', async (req: Request, res: Response) => {
+// Get all todos
+router.get("/", async (_req: Request, res: Response) => {
     try {
-        const { id } = req.params
-        const { description, completed } = req.body as TodoInput
+        const result: QueryResult<Todo> = await pool.query("SELECT * FROM todo");
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        res.status(500).send("Server Error");
+    }
+});
+
+// Update todo
+router.put("/:id", async (req: Request, res: Response) => {
+    try {
+        const id = Number((req.params as { id: string }).id);
+        const body = req.body as unknown as TodoInput;
+        const { description, completed = false } = body;
 
         if (!description) {
-            return res.status(400).json({ error: "Description is required" })
+            return res.status(400).json({ error: "Description is required" });
         }
-        const updateTodo: QueryResult<Todo> = await pool.query(
+
+        const result: QueryResult<Todo> = await pool.query(
             "UPDATE todo SET description = $1, completed = $2 WHERE todo_id = $3 RETURNING *",
-            [description, completed || false, id]
-        )
-        if (updateTodo.rows.length === 0) {
-            return res.status(404).json({ error: "Todo not found" })
-        }
-        res.json({
-            message: 'Todo was updated!',
-            todo: updateTodo.rows[0]
-        })
+            [description, completed, id]
+        );
 
-    } catch (err) {
-        if (err instanceof Error) {
-            console.error(err.message);
-        } else {
-            console.error(String(err));
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: "Todo not found" });
         }
+
+        res.json({ message: "Todo was updated!", todo: result.rows[0] });
+    } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
         res.status(500).send("Server Error");
     }
-})
+});
 
-//delete todo
-router.delete('/:id', async (req: Request, res: Response) => {
+// Delete todo
+router.delete("/:id", async (req: Request, res: Response) => {
     try {
-        const { id } = req.params
-        const deletedTodo = await pool.query("DELETE FROM todo WHERE todo_id = $1 RETURNING *", [id])
-        res.json("Todo was deleted!")
-        if (deletedTodo.rows.length === 0) {
-            return res.status(404).json({ error: "Todo not found" })
+        const id = Number((req.params as { id: string }).id);
+
+        const result: QueryResult<Todo> = await pool.query(
+            "DELETE FROM todo WHERE todo_id = $1 RETURNING *",
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: "Todo not found" });
         }
+
+        res.json({ message: "Todo was deleted!", todo: result.rows[0] });
     } catch (err) {
-        if (err instanceof Error) {
-            console.error(err.message);
-        } else {
-            console.error(String(err));
-        }
+        console.error(err instanceof Error ? err.message : String(err));
         res.status(500).send("Server Error");
     }
-})
+});
 
-
-export default router
+export default router;
